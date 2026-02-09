@@ -1,80 +1,91 @@
 import asyncio
+import argparse
+from tqdm import tqdm
+
 from app.src.browser import BrowserManager
 from app.src.navigator import MapsNavigator
 from app.src.scraper import Scrapper
 from app.data.exporter import ExportService
-import argparse
+from app.data.processor import DataProcessor
+
 
 async def main(query: str, output: str):
-    
     manager = BrowserManager()
-
     browser, page = await manager.start()
 
     navigator = MapsNavigator(page)
     scrapper = Scrapper(page)
+    processor = DataProcessor()
+
     results = []
     seen_hrefs = set()
     seen_keys = set()
-
 
     try:
         await navigator.open_maps()
         await navigator.search(query)
 
-       
-        cards = await scrapper.scroll_feed_and_collect_cards(limit=50, max_scrolls=25, pause_ms=800)
-        print(f"Foram encontrados {len(cards)} cards.")
+        cards = await scrapper.scroll_feed_and_collect_cards(
+            limit=50,
+            max_scrolls=25,
+            pause_ms=800
+        )
 
-        
-        for card in cards:
+        print(f"Cards found: {len(cards)}")
+
+        for card in tqdm(cards, desc="Processing cards", unit="card"):
             try:
                 href = await card.get_attribute("href")
+                if href and href in seen_hrefs:
+                    continue
                 if href:
-                    if href in seen_hrefs:
-                        continue
                     seen_hrefs.add(href)
 
                 await scrapper.open_card(card)
                 raw_data = await scrapper.extract_all()
 
-                name = (raw_data.get("name") or "").strip().lower()
-                address = (raw_data.get("address") or "").strip().lower()
+                # Ensure minimum usable data before processing
+                processor.validate_required_fields(raw_data)
 
-                print("URL atual:", page.url)
+                clean = {
+                    "name": processor.normalize_text(raw_data.get("name")),
+                    "rating": processor.normalize_rating(raw_data.get("rating")),
+                    "address": processor.normalize_address(raw_data.get("address")),
+                    "phone": processor.normalize_phone(raw_data.get("phone")),
+                    "website": processor.normalize_text(raw_data.get("website")),
+                }
 
-
-                # chave final (mais robusta que só address)
-                key = (name, address)
+                # Deduplicate based on normalized identity
+                key = (
+                    (clean.get("name") or "").lower(),
+                    (clean.get("address") or "").lower(),
+                )
                 if key in seen_keys:
                     continue
-                # se address vier vazio, ainda dedup por nome
-                if not address and name and (name, "") in seen_keys:
-                    continue
-
                 seen_keys.add(key)
 
-                results.append(raw_data)
-                print(f"Extraído com sucesso: {raw_data.get('name')}")
+                results.append(clean)
+                print(f"Extracted: {clean.get('name')}")
 
             except Exception as e:
-                print(f"Erro ao processar card: {e}")
+                print(f"Extraction error: {e}")
                 continue
 
-            if results:
-                filename = output if output.lower().endswith(".xlsx") else f"{output}.xlsx"
-                ExportService.to_excel(results, filename)
-                print("Arquivo exportado com sucesso!")
+        if results:
+            filename = output if output.lower().endswith(".xlsx") else f"{output}.xlsx"
+            ExportService.to_excel(results, filename)
+            print(f"Export completed -> {filename}")
+        else:
+            print("No results collected")
 
     finally:
-
         await manager.close()
 
+
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("--query", required=True, help="the search value")
-    parser.add_argument("--output", required=True, help="set the output file name")
-    parsed= parser.parse_args()
+    parser.add_argument("--query", required=True, help="Search query")
+    parser.add_argument("--output", required=True, help="Output filename")
+    args = parser.parse_args()
 
-    asyncio.run(main(parsed.query, parsed.output))
+    asyncio.run(main(args.query, args.output))

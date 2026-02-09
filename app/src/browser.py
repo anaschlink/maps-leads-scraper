@@ -10,26 +10,27 @@ class BrowserManager:
    
     async def start(self):
         if not self.running:
-          
+            # Start Playwright engine
             self.playwright = await async_playwright().start()
             
-           
+            # Launch Chromium using Edge channel
             self.browser = await self.playwright.chromium.launch(
                 channel="msedge", 
                 headless=True
             )
             
-            
+            # Create browser context
             self.context = await self.browser.new_context()
             
-           
+            # Open a new page
             self.page = await self.context.new_page()
 
-            # BLOQUEIO DE IMAGENS: intercepta as requisições de imagem e as cancela
+            # IMAGE BLOCKING:
+            # Intercept image requests and cancel them to improve performance
             await self.page.route("**/*.{png,jpg,jpeg,svg}", lambda route: route.abort())
             
             self.running = True
-            print("Navegador iniciado com bloqueio de imagens para performance.")
+            print("Browser started with image blocking enabled for performance.")
 
         return self.browser, self.page
 

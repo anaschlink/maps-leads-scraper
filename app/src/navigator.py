@@ -17,13 +17,13 @@ class MapsNavigator():
     
     
     async def open_maps(self):
-        print("Abrindo o Google Maps...")
+        print("Opening Google Maps...")
         try:
-            # Usamos uma URL mais limpa e o wait_until mais rápido
+            
             await self.page.goto(
                 "https://www.google.com/maps", 
                 wait_until="domcontentloaded", 
-                timeout=60000  # Aumentamos para 60s por segurança
+                timeout=60000 
             )
 
             await self.page.wait_for_load_state("networkidle", timeout=60000)
@@ -32,37 +32,39 @@ class MapsNavigator():
 
            
             sel = await self._find_search_input(timeout_each=8000)
-            print(f"Google Maps carregado. Campo de busca OK: {sel}")
+            print(f"Google Maps loaded. Search input OK: {sel}")
             
         except Exception as e:
-            print(f"Erro ao abrir o Maps: {e}")
+            print(f"Error opening Google Maps: {e}")
             await self.page.screenshot(path="error_opening_maps.png", full_page=True)
-            # salva html também pra debug
+             # Save HTML as well for debugging.
             html = await self.page.content()
             with open("error_opening_maps.html", "w", encoding="utf-8") as f:
                 f.write(html)
             raise
 
     async def search(self, query: str):
-        print(f"Iniciando busca por: {query}")
+        print(f"Starting search for: {query}")
 
-        # garantir que não tem overlay travando
+        # Ensure there is no consent overlay blocking interactions.
         await self._try_accept_consent()
 
-        # achar o input e interagir com foco
+        # Find the search input and interact with it using focus.
         sel = await self._find_search_input(timeout_each=8000)
-        print(f"Campo de busca encontrado: {sel}")
+        print(f"Search input found: {sel}")
 
         box = self.page.locator(sel).first
         await box.click()
         await box.fill(query)
         await self.page.keyboard.press("Enter")
 
-        # esperar resultados: às vezes aparece feed, às vezes demora mais
+        # Wait for results: sometimes the feed shows up, sometimes it takes longer.
         try:
             await self.page.wait_for_selector(self.feed_selector, timeout=30000)
         except PWTimeout:
-            # fallback: às vezes não é feed, mas aparece lista de cards/links
+
+            # Fallback: sometimes the feed is not present, but cards/links or the main pane is 
+
             await self.page.wait_for_selector('a.hfpxzc, div[role="main"]', timeout=30000)
 
         print("Resultados carregados.")
@@ -76,15 +78,15 @@ class MapsNavigator():
             except Exception as e:
                 last_err = e
                 continue
-        # se não achou, faz dump pra você ver o que abriu
+        # If not found, dump assets so you can inspect what actually loaded.
         await self.page.screenshot(path="maps_debug.png", full_page=True)
         html = await self.page.content()
         with open("maps_debug.html", "w", encoding="utf-8") as f:
             f.write(html)
-        raise RuntimeError(f"Não encontrei o campo de busca. Último erro: {last_err}")
+        raise RuntimeError(f"Could not find the search input. Last error: {last_err}")
 
     async def _try_accept_consent(self):
-        # botões comuns BR/EN
+        # Common consent buttons in PT-BR/EN.
         candidates = [
             'button:has-text("Aceitar tudo")',
             'button:has-text("Aceitar")',
@@ -98,7 +100,7 @@ class MapsNavigator():
                 if await btn.is_visible(timeout=1200):
                     await btn.click()
                     await self.page.wait_for_timeout(400)
-                    print("Consentimento aceito.")
+                    print("Consent accepted.")
                     return
             except Exception:
                 pass
