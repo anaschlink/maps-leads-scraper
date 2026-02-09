@@ -13,7 +13,8 @@ class MapsNavigator():
             'input[aria-label="Search Google Maps"]',
         ]
         self.feed_selector = 'div[role="feed"]'
-       
+
+    
     
     async def open_maps(self):
         print("Abrindo o Google Maps...")
@@ -24,6 +25,7 @@ class MapsNavigator():
                 wait_until="domcontentloaded", 
                 timeout=60000  # Aumentamos para 60s por segurança
             )
+
             await self.page.wait_for_load_state("networkidle", timeout=60000)
             
             await self._try_accept_consent()
@@ -41,9 +43,6 @@ class MapsNavigator():
                 f.write(html)
             raise
 
-        #scroll
-
-     
     async def search(self, query: str):
         print(f"Iniciando busca por: {query}")
 
